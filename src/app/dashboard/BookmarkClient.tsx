@@ -304,9 +304,8 @@ export default function BookmarkClient({
   }
 
   async function signOut() {
-  await supabase.auth.signOut()
-  router.refresh() // refresh first to clear server session
-  router.push('/')
+  try { await supabase.auth.signOut() } catch { /* ignore */ }
+  window.location.replace('/')
 }
 
   const filtered = bookmarks.filter(b => {
