@@ -94,7 +94,7 @@ export default function BookmarkClient({
       .channel(channelName)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'bookmarks' },
+        { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
         (payload) => {
           console.log('[Realtime] event:', payload.eventType, payload)
           if (payload.eventType === 'INSERT') {
