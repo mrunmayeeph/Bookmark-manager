@@ -127,5 +127,118 @@ src/
         ├── BookmarkClient.tsx     # Client — UI, realtime, all CRUD
         └── loading.tsx            # Skeleton loading state
 ```
+--
+
+# 🚧 Real Problems Encountered & How They Were Solved
 
 ---
+
+## 1️⃣ Silent Data Reverting Due to Missing UPDATE RLS Policy
+
+**Problem:**  
+Bookmarks appeared to update correctly in the UI, but after refreshing the page, the old data returned from the database.
+
+**Root Cause:**  
+Row Level Security (RLS) policies were created for `SELECT`, `INSERT`, and `DELETE` — but `UPDATE` was missing.  
+Supabase blocks `UPDATE` operations when no `UPDATE` policy exists, and it does so silently.
+
+**Fix:**  
+
+```sql
+create policy "Users update own bookmarks"
+on bookmarks
+for update
+using (auth.uid() = user_id);
+```
+
+**Lesson Learned:**  
+Frontend state is not proof of persistence. Always validate against the database when debugging.
+
+---
+
+## 2️⃣ Category Column Saving as `null` Despite Correct UI State
+
+**Problem:**  
+New bookmarks showed the correct category in React state but reverted to `"Uncategorized"` after refresh.
+
+**Root Cause:**  
+The `category` column was added after initial RLS policies were created. Inserts were accepted, but the new column was written as `null`.  
+This created a mismatch between frontend state and actual database state.
+
+**Fix:**  
+- Recreated the table with all columns defined together.  
+- Confirmed `INSERT` and `UPDATE` policies aligned with the schema.  
+- Began using `.select()` after inserts to verify actual DB writes.
+
+**Lesson Learned:**  
+Schema evolution + RLS must be aligned. Silent failures can occur when security policies don't reflect updated schema.
+
+---
+
+## 3️⃣ Realtime UPDATE & DELETE Events Not Broadcasting
+
+**Problem:**  
+`INSERT` events worked, but `UPDATE` and `DELETE` changes did not propagate across tabs.
+
+**Root Cause:**  
+Postgres `REPLICA IDENTITY` was not set to `FULL`.  
+Without it, `UPDATE` and `DELETE` events lacked full row payloads, making realtime handlers ineffective.
+
+**Fix:**  
+
+```sql
+alter table bookmarks replica identity full;
+```
+
+**Lesson Learned:**  
+Realtime systems depend on database replication configuration — not just frontend subscriptions.
+
+---
+
+## 4️⃣ Realtime Not Working Across Tabs Due to Channel Deduplication
+
+**Problem:**  
+Only one tab received realtime events, even though both were subscribed.
+
+**Root Cause:**  
+Both tabs used the same channel name, causing Supabase to internally deduplicate connections.
+
+**Fix:**  
+- Ensured unique channel names per client instance.  
+- Consolidated event handling into a single wildcard (`'*'`) listener.
+
+**Lesson Learned:**  
+Realtime debugging requires validating connection → publication → filter → payload, not just subscription status.
+
+---
+
+## 5️⃣ Hydration Mismatch in Next.js Due to Time-Based Rendering
+
+**Problem:**  
+React hydration warnings appeared due to time-based UI (`timeAgo()` using `Date.now()`).
+
+**Root Cause:**  
+Server-rendered output differed slightly from client-rendered output due to timing differences.
+
+**Fix:**  
+Used `suppressHydrationWarning` for dynamic timestamp elements.
+
+**Lesson Learned:**  
+Server and client rendering must produce identical initial output in the App Router.
+
+## Deployment
+
+```bash
+# 1. Push to GitHub
+# 2. Import to Vercel, add env vars:
+#    NEXT_PUBLIC_SUPABASE_URL
+#    NEXT_PUBLIC_SUPABASE_ANON_KEY
+# 3. After deploy, update in Supabase:
+#    Site URL → https://your-app.vercel.app
+#    Redirect URLs → https://your-app.vercel.app/auth/callback
+# 4. Update Google Cloud Console:
+#    Authorized redirect URI → https://your-project.supabase.co/auth/v1/callback
+```
+
+---
+
