@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  experimental: {
+    serverComponentsExternalPackages: ['@supabase/supabase-js'],
+  },
 }
 
 export default nextConfig
