@@ -100,7 +100,9 @@ export default function BookmarkClient({
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
         (payload) => setBookmarks(prev => prev.filter(b => b.id !== (payload.old as { id: string }).id))
       )
-      .subscribe()
+      .subscribe((status) => {
+        console.log('Realtime status:', status)
+    })
     return () => { supabase.removeChannel(channel) }
   }, [user.id])
 
