@@ -471,7 +471,7 @@ export default function LandingPage() {
                           <div className="font-bold text-[0.68rem] text-[#e2eaf2] truncate mb-0.5" style={{fontFamily:'Space Mono, monospace'}}>{bm.title}</div>
                           <div className="text-[0.6rem] text-[#6b7a8d] truncate mb-2">{getDomain(bm.url)}</div>
                           <div className="flex items-center justify-end gap-1">
-                            <span className="text-[0.58rem] text-[#404d5c] mr-auto">{timeAgo(bm.added)}</span>
+                            <span className="text-[0.58rem] text-[#404d5c] mr-auto" suppressHydrationWarning>{timeAgo(bm.added)}</span>
                             <button
                               onClick={() => showToast(`↗ Opening ${getDomain(bm.url)}…`)}
                               className="bg-none border-none cursor-pointer text-[11px] text-[#404d5c] px-1 py-0.5 rounded hover:text-[#00d4ff] hover:bg-[rgba(0,212,255,0.08)] transition-all"
