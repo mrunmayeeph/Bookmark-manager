@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
 import { useRouter } from 'next/navigation'
 
+
+const supabase = createClient()
 type Bookmark = {
   id: string
   title: string
@@ -52,7 +54,7 @@ export default function BookmarkClient({
   initialCategories: Category[]
   user: User
 }) {
-  const supabase = createClient()
+  
   const router   = useRouter()
 
   const [bookmarks, setBookmarks]             = useState<Bookmark[]>(initialBookmarks)
