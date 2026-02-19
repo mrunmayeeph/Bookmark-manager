@@ -304,9 +304,10 @@ export default function BookmarkClient({
   }
 
   async function signOut() {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
+  await supabase.auth.signOut()
+  router.refresh() // refresh first to clear server session
+  router.push('/')
+}
 
   const filtered = bookmarks.filter(b => {
     const matchQ = b.title.toLowerCase().includes(query.toLowerCase()) ||
