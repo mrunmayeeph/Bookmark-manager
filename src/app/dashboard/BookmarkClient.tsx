@@ -84,51 +84,45 @@ export default function BookmarkClient({
 
   // ── Realtime ──────────────────────────────────────────────────────────────
   useEffect(() => {
-    const channel = supabase
-      .channel(`bm:${user.id}`)
-      .on(
-    'postgres_changes',
-    { 
-        event: 'INSERT',
+  // Random suffix makes each tab's channel unique — prevents Supabase deduplication
+  const channelName = `bm-${user.id}-${Math.random().toString(36).slice(2)}`
+  
+  const channel = supabase
+    .channel(channelName)
+    .on(
+      'postgres_changes',
+      {
+        event: '*',
         schema: 'public',
         table: 'bookmarks',
-        filter: `user_id=eq.${user.id}`
-    },
-    (payload) => {
-        console.log('INSERT event received:', payload)   // 👈 ADD HERE
+      },
+      (payload) => {
+        console.log('REALTIME EVENT:', payload.eventType, payload)
 
-        setBookmarks(prev => {
-        if (prev.some(b => b.id === (payload.new as Bookmark).id)) return prev
-        return [payload.new as Bookmark, ...prev]
-        })
-    }
+        if (payload.eventType === 'INSERT') {
+          setBookmarks(prev => {
+            if (prev.some(b => b.id === (payload.new as Bookmark).id)) return prev
+            return [payload.new as Bookmark, ...prev]
+          })
+        } else if (payload.eventType === 'UPDATE') {
+          setBookmarks(prev =>
+            prev.map(b =>
+              b.id === (payload.new as Bookmark).id ? (payload.new as Bookmark) : b
+            )
+          )
+        } else if (payload.eventType === 'DELETE') {
+          setBookmarks(prev =>
+            prev.filter(b => b.id !== (payload.old as { id: string }).id)
+          )
+        }
+      }
     )
-
-      .on(
-  'postgres_changes',
-  { event: 'UPDATE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-  (payload) => {
-    console.log('UPDATE event received:', payload)   // 👈 HERE
-    setBookmarks(prev =>
-      prev.map(b => b.id === (payload.new as Bookmark).id ? payload.new as Bookmark : b)
-    )
-  }
-)
-
-      .on(
-  'postgres_changes',
-  { event: 'DELETE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-  (payload) => {
-    console.log('DELETE event received:', payload)   // 👈 HERE
-    setBookmarks(prev => prev.filter(b => b.id !== (payload.old as { id: string }).id))
-  }
-)
-
-      .subscribe((status) => {
-        console.log('Realtime status:', status)
+    .subscribe((status) => {
+      console.log('Realtime status:', status)
     })
-    return () => { supabase.removeChannel(channel) }
-  }, [user.id])
+
+  return () => { supabase.removeChannel(channel) }
+}, [user.id])
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') { closeBmModal(); closeCatModal() } }
