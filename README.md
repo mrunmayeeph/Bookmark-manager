@@ -129,20 +129,20 @@ src/
 ```
 --
 
-# 🚧 Real Problems Encountered & How They Were Solved
+# Real Problems Encountered (Top 5)
 
 ---
 
-## 1️⃣ Silent Data Reverting Due to Missing UPDATE RLS Policy
+## 1️⃣ Silent UPDATE Failures Due to Missing RLS Policy
 
 **Problem:**  
-Bookmarks appeared to update correctly in the UI, but after refreshing the page, the old data returned from the database.
+UI showed successful edits, but data reverted after refresh.
 
 **Root Cause:**  
-Row Level Security (RLS) policies were created for `SELECT`, `INSERT`, and `DELETE` — but `UPDATE` was missing.  
-Supabase blocks `UPDATE` operations when no `UPDATE` policy exists, and it does so silently.
+Row Level Security (RLS) policy for `UPDATE` was missing.  
+Supabase silently blocked the update operation, while the frontend state updated optimistically.
 
-**Fix:**  
+**Fix:**
 
 ```sql
 create policy "Users update own bookmarks"
@@ -151,80 +151,116 @@ for update
 using (auth.uid() = user_id);
 ```
 
-**Lesson Learned:**  
-Frontend state is not proof of persistence. Always validate against the database when debugging.
+**What This Demonstrates:**  
+Understanding that the database is the source of truth — not frontend state. Security layers must explicitly allow each operation.
 
 ---
 
-## 2️⃣ Category Column Saving as `null` Despite Correct UI State
+## 2️⃣ Category Column Writing `null` Due to Schema + RLS Mismatch
 
 **Problem:**  
-New bookmarks showed the correct category in React state but reverted to `"Uncategorized"` after refresh.
+`INSERT` appeared successful, but the `category` column persisted as `null` after refresh.
 
 **Root Cause:**  
-The `category` column was added after initial RLS policies were created. Inserts were accepted, but the new column was written as `null`.  
-This created a mismatch between frontend state and actual database state.
+The column was added after initial RLS policies were created.  
+Policies did not fully align with the evolved schema.
+
+The issue was only discovered after validating with:
+
+```ts
+.insert(data)
+.select()
+```
 
 **Fix:**  
-- Recreated the table with all columns defined together.  
-- Confirmed `INSERT` and `UPDATE` policies aligned with the schema.  
-- Began using `.select()` after inserts to verify actual DB writes.
+- Recreated the table with full schema definition.
+- Realigned `INSERT` and `UPDATE` policies with the schema.
+- Began validating all writes using `.select()` after mutations.
 
-**Lesson Learned:**  
-Schema evolution + RLS must be aligned. Silent failures can occur when security policies don't reflect updated schema.
+**What This Demonstrates:**  
+Database-layer debugging, not just React state inspection.  
+Schema evolution and security policies must stay aligned.
 
 ---
 
-## 3️⃣ Realtime UPDATE & DELETE Events Not Broadcasting
+## 3️⃣ Realtime Failing Due to Replica Identity + Channel Behavior
 
 **Problem:**  
-`INSERT` events worked, but `UPDATE` and `DELETE` changes did not propagate across tabs.
+`INSERT` worked, but `UPDATE` and `DELETE` events did not broadcast properly across tabs.
 
-**Root Cause:**  
-Postgres `REPLICA IDENTITY` was not set to `FULL`.  
-Without it, `UPDATE` and `DELETE` events lacked full row payloads, making realtime handlers ineffective.
+**Root Causes:**
 
-**Fix:**  
+- `REPLICA IDENTITY FULL` was not set (no full payload for updates/deletes).
+- Channel deduplication occurred when multiple tabs used the same channel name.
+- Subscription filters were not properly configured.
+
+**Fix:**
 
 ```sql
 alter table bookmarks replica identity full;
 ```
 
-**Lesson Learned:**  
-Realtime systems depend on database replication configuration — not just frontend subscriptions.
+- Assigned unique channel names per client.
+- Consolidated listeners using wildcard (`'*'`) events.
+- Verified publication → filter → payload flow.
+
+**What This Demonstrates:**  
+Infrastructure-level realtime debugging.  
+Understanding of Postgres replication mechanics, websocket behavior, and Supabase channel architecture.
 
 ---
 
-## 4️⃣ Realtime Not Working Across Tabs Due to Channel Deduplication
+## 4️⃣ OAuth Flow Mismatch (Implicit vs PKCE)
 
 **Problem:**  
-Only one tab received realtime events, even though both were subscribed.
+OAuth login succeeded, but SSR sessions failed.  
+`getSession()` in middleware returned `null`.
 
 **Root Cause:**  
-Both tabs used the same channel name, causing Supabase to internally deduplicate connections.
+Implicit flow was enabled instead of PKCE.  
+Implicit flow does not properly support secure SSR session handling.
 
 **Fix:**  
-- Ensured unique channel names per client instance.  
-- Consolidated event handling into a single wildcard (`'*'`) listener.
+- Enabled PKCE flow.
+- Corrected redirect URL configuration.
+- Ensured proper callback handling for server-side session validation.
 
-**Lesson Learned:**  
-Realtime debugging requires validating connection → publication → filter → payload, not just subscription status.
+**What This Demonstrates:**  
+Understanding of OAuth flow differences and authentication architecture in SSR environments.
 
 ---
 
-## 5️⃣ Hydration Mismatch in Next.js Due to Time-Based Rendering
+## 5️⃣ Callback Cookies Not Persisting in Middleware
 
 **Problem:**  
-React hydration warnings appeared due to time-based UI (`timeAgo()` using `Date.now()`).
+Login succeeded, but session did not persist across requests.
 
 **Root Cause:**  
-Server-rendered output differed slightly from client-rendered output due to timing differences.
+Cookies were not properly attached to `NextResponse` inside middleware.  
+The session token was generated but never propagated through the response lifecycle.
 
 **Fix:**  
-Used `suppressHydrationWarning` for dynamic timestamp elements.
+- Ensured cookies were forwarded correctly in middleware.
+- Properly returned modified `NextResponse` with updated headers.
 
-**Lesson Learned:**  
-Server and client rendering must produce identical initial output in the App Router.
+**What This Demonstrates:**  
+Deep understanding of Next.js App Router middleware, request/response lifecycle, and SSR cookie handling.
+
+---
+
+# Summary
+
+These issues required debugging across:
+
+- Row Level Security (RLS)
+- Schema evolution
+- Postgres replication
+- Supabase realtime infrastructure
+- OAuth authentication flows
+- Next.js SSR middleware lifecycle
+
+This project moved beyond frontend implementation into database security, infrastructure behavior, and authentication architecture.
+---
 
 ## Deployment
 
@@ -241,4 +277,5 @@ Server and client rendering must produce identical initial output in the App Rou
 ```
 
 ---
+
 
