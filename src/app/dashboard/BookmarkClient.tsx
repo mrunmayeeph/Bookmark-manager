@@ -86,20 +86,44 @@ export default function BookmarkClient({
   useEffect(() => {
     const channel = supabase
       .channel(`bm:${user.id}`)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-        (payload) => setBookmarks(prev => {
-          if (prev.some(b => b.id === (payload.new as Bookmark).id)) return prev
-          return [payload.new as Bookmark, ...prev]
+      .on(
+    'postgres_changes',
+    { 
+        event: 'INSERT',
+        schema: 'public',
+        table: 'bookmarks',
+        filter: `user_id=eq.${user.id}`
+    },
+    (payload) => {
+        console.log('INSERT event received:', payload)   // 👈 ADD HERE
+
+        setBookmarks(prev => {
+        if (prev.some(b => b.id === (payload.new as Bookmark).id)) return prev
+        return [payload.new as Bookmark, ...prev]
         })
-      )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-        (payload) => setBookmarks(prev =>
-          prev.map(b => b.id === (payload.new as Bookmark).id ? payload.new as Bookmark : b)
-        )
-      )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-        (payload) => setBookmarks(prev => prev.filter(b => b.id !== (payload.old as { id: string }).id))
-      )
+    }
+    )
+
+      .on(
+  'postgres_changes',
+  { event: 'UPDATE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
+  (payload) => {
+    console.log('UPDATE event received:', payload)   // 👈 HERE
+    setBookmarks(prev =>
+      prev.map(b => b.id === (payload.new as Bookmark).id ? payload.new as Bookmark : b)
+    )
+  }
+)
+
+      .on(
+  'postgres_changes',
+  { event: 'DELETE', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
+  (payload) => {
+    console.log('DELETE event received:', payload)   // 👈 HERE
+    setBookmarks(prev => prev.filter(b => b.id !== (payload.old as { id: string }).id))
+  }
+)
+
       .subscribe((status) => {
         console.log('Realtime status:', status)
     })
