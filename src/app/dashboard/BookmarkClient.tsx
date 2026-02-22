@@ -90,33 +90,43 @@ export default function BookmarkClient({
     // Unique channel per tab — critical to prevent Supabase deduplication
     const channelName = `bookmarks-${user.id}-${Math.random().toString(36).slice(2)}`
 
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
-        (payload) => {
-          console.log('[Realtime] event:', payload.eventType, payload)
-          if (payload.eventType === 'INSERT') {
-            const newRow = payload.new as Bookmark
-            setBookmarks(prev =>
-              prev.some(b => b.id === newRow.id) ? prev : [newRow, ...prev]
-            )
-          } else if (payload.eventType === 'UPDATE') {
-            const updated = payload.new as Bookmark
-            setBookmarks(prev => prev.map(b => b.id === updated.id ? updated : b))
-          } else if (payload.eventType === 'DELETE') {
-            const deleted = payload.old as { id: string }
-            setBookmarks(prev => prev.filter(b => b.id !== deleted.id))
-          }
+  const channel = supabase
+    .channel(channelName, {
+      config: {
+        broadcast: { self: true },
+        presence: { key: user.id },
+      },
+    })
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'bookmarks', filter: `user_id=eq.${user.id}` },
+      (payload) => {
+        console.log('[Realtime] event:', payload.eventType, payload)
+        if (payload.eventType === 'INSERT') {
+          const newRow = payload.new as Bookmark
+          setBookmarks(prev =>
+            prev.some(b => b.id === newRow.id) ? prev : [newRow, ...prev]
+          )
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Bookmark
+          setBookmarks(prev => prev.map(b => b.id === updated.id ? updated : b))
+        } else if (payload.eventType === 'DELETE') {
+          const deleted = payload.old as { id: string }
+          setBookmarks(prev => prev.filter(b => b.id !== deleted.id))
         }
-      )
-      .subscribe((status, err) => {
-        console.log('[Realtime] status:', status, err ?? '')
-      })
+      }
+    )
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          await supabase.realtime.setAuth(session.access_token)
+        }
+      }
+    })
 
-    return () => { supabase.removeChannel(channel) }
-  }, [user.id])
+  return () => { supabase.removeChannel(channel) }
+}, [user.id])
 
   // ── Keyboard shortcut ────────────────────────────────────────────────────
   useEffect(() => {
