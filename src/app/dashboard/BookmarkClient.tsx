@@ -128,6 +128,41 @@ export default function BookmarkClient({
   return () => { supabase.removeChannel(channel) }
 }, [user.id])
 
+useEffect(() => {
+  const catChannelName = `categories-${user.id}-${Math.random().toString(36).slice(2)}`
+
+  const catChannel = supabase
+    .channel(catChannelName)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'categories', filter: `user_id=eq.${user.id}` },
+      (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newCat = payload.new as Category
+          setCategories(prev =>
+            prev.some(c => c.id === newCat.id) ? prev : [...prev, newCat]
+          )
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as Category
+          setCategories(prev => prev.map(c => c.id === updated.id ? updated : c))
+        } else if (payload.eventType === 'DELETE') {
+          const deleted = payload.old as { id: string }
+          setCategories(prev => prev.filter(c => c.id !== deleted.id))
+        }
+      }
+    )
+    .subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          await supabase.realtime.setAuth(session.access_token)
+        }
+      }
+    })
+
+  return () => { supabase.removeChannel(catChannel) }
+}, [user.id])
+
   // ── Keyboard shortcut ────────────────────────────────────────────────────
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
